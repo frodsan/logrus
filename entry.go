@@ -106,13 +106,43 @@ func (entry *Entry) WithContext(ctx context.Context) *Entry {
 	return &Entry{Logger: entry.Logger, Data: entry.Data, Time: entry.Time, err: entry.err, Context: ctx}
 }
 
+func getCallerFunctionName() string {
+	// Skip GetCallerFunctionName and the function to get the caller of
+	return getFrame(2).Function
+}
+
+func getFrame(skipFrames int) runtime.Frame {
+	// We need the frame at index skipFrames+2, since we never want runtime.Callers and getFrame
+	targetFrameIndex := skipFrames + 2
+
+	// Set size to targetFrameIndex+2 to ensure we have room for one more caller than we need
+	programCounters := make([]uintptr, targetFrameIndex+2)
+	n := runtime.Callers(0, programCounters)
+
+	frame := runtime.Frame{Function: "unknown"}
+	if n > 0 {
+		frames := runtime.CallersFrames(programCounters[:n])
+		for more, frameIndex := true, 0; more && frameIndex <= targetFrameIndex; frameIndex++ {
+			var frameCandidate runtime.Frame
+			frameCandidate, more = frames.Next()
+			if frameIndex == targetFrameIndex {
+				frame = frameCandidate
+			}
+		}
+	}
+
+	return frame
+}
+
 // Add a single field to the Entry.
 func (entry *Entry) WithField(key string, value interface{}) *Entry {
+	entry.Debugf("Calling WithField with %s: %+v; from %s", key, value, getCallerFunctionName())
 	return entry.WithFields(Fields{key: value})
 }
 
 // Add a map of fields to the Entry.
 func (entry *Entry) WithFields(fields Fields) *Entry {
+	entry.Debugf("Calling WithFields with fields: %+v; from %s", fields, getCallerFunctionName())
 	data := make(Fields, len(entry.Data)+len(fields))
 	for k, v := range entry.Data {
 		data[k] = v
